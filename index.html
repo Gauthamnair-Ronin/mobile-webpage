@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensor Data Streaming</title>
+</head>
+<body>
+    <h1>Streaming Sensor Data</h1>
+    <p id="status">Waiting for sensor data...</p>
+    
+    <script>
+        let ws;
+        let sensorData = {
+            accX: 0, accY: 0, accZ: 0, // Accelerometer
+            gyroX: 0, gyroY: 0, gyroZ: 0  // Gyroscope
+        };
+
+        async function requestSensorPermission() {
+            if (typeof DeviceMotionEvent.requestPermission === "function") {
+                try {
+                    const motionPermission = await DeviceMotionEvent.requestPermission();
+                    const orientationPermission = await DeviceOrientationEvent.requestPermission();
+                    
+                    if (motionPermission !== "granted" || orientationPermission !== "granted") {
+                        document.getElementById("status").innerText = "Motion access denied!";
+                        return false;
+                    }
+                } catch (e) {
+                    console.error("Error requesting permission:", e);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        async function startSensorStreaming() {
+            const permissionGranted = await requestSensorPermission();
+            if (!permissionGranted) return;
+
+            ws = new WebSocket("ws://192.168.81.127:8000/ws/sensor"); // Change IP if needed
+
+            ws.onopen = function () {
+                console.log("WebSocket connected");
+                document.getElementById("status").innerText = "Connected, streaming data...";
+            };
+
+            ws.onclose = function () {
+                console.log("WebSocket closed");
+                document.getElementById("status").innerText = "Disconnected.";
+            };
+
+            ws.onerror = function (error) {
+                console.error("WebSocket Error:", error);
+                document.getElementById("status").innerText = "WebSocket Error!";
+            };
+
+            window.addEventListener("devicemotion", (event) => {
+                sensorData.accX = event.accelerationIncludingGravity?.x || 0;
+                sensorData.accY = event.accelerationIncludingGravity?.y || 0;
+                sensorData.accZ = event.accelerationIncludingGravity?.z || 0;
+
+                sendSensorData(); // Send the combined data
+            });
+
+            window.addEventListener("deviceorientation", (event) => {
+                sensorData.gyroX = event.alpha || 0; // Rotation around Z-axis
+                sensorData.gyroY = event.beta || 0;  // Rotation around X-axis
+                sensorData.gyroZ = event.gamma || 0; // Rotation around Y-axis
+
+                sendSensorData(); // Send the combined data
+            });
+
+        }
+
+        function sendSensorData() {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(sensorData));
+                console.log("Sent:", sensorData);
+            } else {
+                console.warn("WebSocket not open, skipping send");
+            }
+        }
+
+        startSensorStreaming();
+    </script>
+</body>
+</html>
